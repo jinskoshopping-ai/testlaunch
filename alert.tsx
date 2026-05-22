@@ -1,56 +1,93 @@
 import { Link } from "@tanstack/react-router";
-import { Facebook, Instagram } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Menu, X } from "lucide-react";
 
-export function Footer() {
+const links = [
+  { href: "#ueber", label: "Über uns" },
+  { href: "#speisen", label: "Speisen" },
+  { href: "#mittagstisch", label: "Mittagstisch" },
+  { href: "#galerie", label: "Galerie" },
+  { href: "#oeffnungszeiten", label: "Öffnungszeiten" },
+  { href: "#kontakt", label: "Kontakt" },
+];
+
+export function Header() {
+  const [scrolled, setScrolled] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    onScroll();
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
-    <footer className="bg-espresso text-cream/90 mt-24">
-      <div className="max-w-7xl mx-auto px-6 py-16 grid md:grid-cols-4 gap-10">
-        <div className="md:col-span-2">
-          <h3 className="font-display text-2xl text-cream">Café Koch</h3>
-          <p className="text-sm mt-1 text-cream/60 uppercase tracking-[0.25em]">
-            Konditorei · seit September 1679
-          </p>
-          <p className="text-sm mt-6 max-w-sm leading-relaxed text-cream/70">
-            Ein Aichacher Traditionshaus in 10. Familiengeneration. Hausgemachte
-            Kuchen, Torten und Pralinen aus eigener Konditorei.
-          </p>
-        </div>
+    <header
+      className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${
+        scrolled
+          ? "bg-background/85 backdrop-blur-md border-b border-border/60 py-3"
+          : "bg-transparent py-5"
+      }`}
+    >
+      <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
+        <Link to="/" className="flex flex-col leading-none">
+          <span className="font-display text-2xl tracking-wide text-espresso">Café Koch</span>
+          <span className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground mt-1">
+            seit September 1679 · Aichach
+          </span>
+        </Link>
 
-        <div>
-          <h4 className="text-sm uppercase tracking-[0.2em] text-cream mb-4">Kontakt</h4>
-          <p className="text-sm leading-relaxed text-cream/70">
-            Stadtplatz 17<br />
-            86551 Aichach<br />
-            Tel. 08251 / 2580<br />
-            Fax 08251 / 82998
-          </p>
-        </div>
+        <nav className="hidden md:flex items-center gap-8">
+          {links.map((l) => (
+            <a
+              key={l.href}
+              href={l.href}
+              className="text-sm text-foreground/80 hover:text-accent transition-colors"
+            >
+              {l.label}
+            </a>
+          ))}
+          <a
+            href="#kontakt"
+            className="text-sm px-5 py-2 rounded-full bg-primary text-primary-foreground hover:bg-accent transition-colors"
+          >
+            Reservieren
+          </a>
+        </nav>
 
-        <div>
-          <h4 className="text-sm uppercase tracking-[0.2em] text-cream mb-4">Öffnungszeiten</h4>
-          <ul className="text-sm space-y-1 text-cream/70">
-            <li>Mo · Ruhetag</li>
-            <li>Di – Do · 09–18 Uhr</li>
-            <li>Fr · 09–18 Uhr</li>
-            <li>Sa · 09–17 Uhr</li>
-            <li>So · 13:30–17:30 Uhr</li>
-          </ul>
-        </div>
+        <button
+          className="md:hidden p-2 text-foreground"
+          onClick={() => setOpen(!open)}
+          aria-label="Menü"
+        >
+          {open ? <X size={22} /> : <Menu size={22} />}
+        </button>
       </div>
 
-      <div className="border-t border-cream/10">
-        <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-cream/50">
-          <p>© {new Date().getFullYear()} Café Koch · Gerhard Granvogl</p>
-          <div className="flex gap-6">
-            <Link to="/impressum" className="hover:text-cream transition-colors">Impressum</Link>
-            <Link to="/datenschutz" className="hover:text-cream transition-colors">Datenschutz</Link>
-          </div>
-          <div className="flex gap-4">
-            <a href="#" aria-label="Facebook" className="hover:text-cream transition-colors"><Facebook size={16} /></a>
-            <a href="#" aria-label="Instagram" className="hover:text-cream transition-colors"><Instagram size={16} /></a>
+      {open && (
+        <div className="md:hidden bg-background border-t border-border mt-3">
+          <div className="px-6 py-4 flex flex-col gap-4">
+            {links.map((l) => (
+              <a
+                key={l.href}
+                href={l.href}
+                onClick={() => setOpen(false)}
+                className="text-base text-foreground/80"
+              >
+                {l.label}
+              </a>
+            ))}
+            <a
+              href="#kontakt"
+              onClick={() => setOpen(false)}
+              className="text-sm text-center px-5 py-2.5 rounded-full bg-primary text-primary-foreground"
+            >
+              Reservieren
+            </a>
           </div>
         </div>
-      </div>
-    </footer>
+      )}
+    </header>
   );
 }

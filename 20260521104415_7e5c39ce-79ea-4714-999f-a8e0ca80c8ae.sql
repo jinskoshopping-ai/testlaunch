@@ -1,536 +1,419 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import type { Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
-import {
-  EDITABLE_KEYS,
-  useOpeningHours,
-  useNews,
-  useSiteSettings,
-  type NewsItem,
-  type OpeningHour,
-} from "@/lib/site-data";
-import { Loader2, LogOut, Plus, Trash2, Save, Upload, Image as ImageIcon } from "lucide-react";
+import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
 
-export const Route = createFileRoute("/admin")({
+export const Route = createFileRoute("/datenschutz")({
   head: () => ({
     meta: [
-      { title: "Adminbereich – Café Koch" },
-      { name: "robots", content: "noindex,nofollow" },
+      { title: "Datenschutz – Café Koch Aichach" },
+      { name: "description", content: "Datenschutzerklärung des Café Koch in Aichach gemäß DSGVO." },
     ],
   }),
-  component: AdminPage,
+  component: Datenschutz,
 });
 
-const ADMIN_EMAIL = "info@cafe-koch.de";
-
-function AdminPage() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(s);
-      if (s?.user) {
-        checkAdmin(s.user.id, s.user.email);
-      } else {
-        setIsAdmin(null);
-        setLoading(false);
-      }
-    });
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      if (data.session?.user) checkAdmin(data.session.user.id, data.session.user.email);
-      else setLoading(false);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  async function checkAdmin(userId: string, email?: string) {
-    setLoading(true);
-    const normalizedEmail = email?.trim().toLowerCase();
-    let { data } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("role", "admin")
-      .maybeSingle();
-
-    if (!data && normalizedEmail === ADMIN_EMAIL) {
-      await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
-      const result = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .eq("role", "admin")
-        .maybeSingle();
-      data = result.data;
-    }
-
-    setIsAdmin(!!data);
-    setLoading(false);
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="animate-spin text-accent" size={32} />
-      </div>
-    );
-  }
-
-  if (!session) return <AuthScreen />;
-
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-6">
-        <div className="max-w-md text-center bg-card border border-border rounded-2xl p-8">
-          <h1 className="font-display text-2xl text-espresso">Kein Zugriff</h1>
-          <p className="text-sm text-foreground/70 mt-3">
-            Dieser Account hat keine Admin-Berechtigung. Nur <strong>{ADMIN_EMAIL}</strong> kann Inhalte bearbeiten.
-          </p>
-          <button
-            onClick={() => supabase.auth.signOut()}
-            className="mt-6 px-5 py-2.5 rounded-full bg-primary text-primary-foreground text-sm"
-          >
-            Abmelden
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return <Dashboard email={session.user.email ?? ""} />;
-}
-
-// -- Auth screen ------------------------------------------------------------
-function AuthScreen() {
-  const [mode, setMode] = useState<"login" | "signup">("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true); setErr(null); setMsg(null);
-    try {
-      if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signUp({
-          email, password,
-          options: { emailRedirectTo: window.location.origin + "/admin" },
-        });
-        if (error) throw error;
-        setMsg("Konto erstellt. Du kannst dich jetzt anmelden.");
-        setMode("login");
-      }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Unbekannter Fehler");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-md bg-card border border-border rounded-3xl shadow-sm p-8">
-        <p className="uppercase tracking-[0.3em] text-xs text-accent">Café Koch</p>
-        <h1 className="font-display text-3xl text-espresso mt-2">Adminbereich</h1>
-        <p className="text-sm text-foreground/70 mt-2">
-          {mode === "login" ? "Bitte melde dich an, um Inhalte zu bearbeiten." : "Erstelle dein Admin-Konto. Nur die Adresse "}
-          {mode === "signup" && <strong>{ADMIN_EMAIL}</strong>}
-          {mode === "signup" && " erhält automatisch Admin-Rechte."}
-        </p>
-
-        <form onSubmit={submit} className="mt-6 space-y-4">
-          <Field label="E-Mail">
-            <input
-              type="email" required autoComplete="email"
-              value={email} onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
-            />
-          </Field>
-          <Field label="Passwort">
-            <input
-              type="password" required minLength={6}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-              value={password} onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
-            />
-          </Field>
-
-          {err && <p className="text-sm text-destructive">{err}</p>}
-          {msg && <p className="text-sm text-accent">{msg}</p>}
-
-          <button
-            type="submit" disabled={busy}
-            className="w-full rounded-full bg-primary text-primary-foreground py-3 text-sm font-medium hover:bg-accent transition-colors disabled:opacity-60"
-          >
-            {busy ? "Bitte warten…" : mode === "login" ? "Anmelden" : "Konto erstellen"}
-          </button>
-        </form>
-
-        <button
-          onClick={() => { setErr(null); setMsg(null); setMode(mode === "login" ? "signup" : "login"); }}
-          className="mt-4 text-xs text-foreground/60 hover:text-accent w-full text-center"
-        >
-          {mode === "login" ? "Noch kein Konto? Konto anlegen" : "Bereits ein Konto? Anmelden"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-xs uppercase tracking-wider text-foreground/60 mb-1.5">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-// -- Dashboard --------------------------------------------------------------
-type Tab = "texte" | "oeffnungszeiten" | "aktuelles" | "bilder";
-
-function Dashboard({ email }: { email: string }) {
-  const [tab, setTab] = useState<Tab>("aktuelles");
-
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "aktuelles", label: "Aktuelles" },
-    { id: "oeffnungszeiten", label: "Öffnungszeiten" },
-    { id: "texte", label: "Texte" },
-    { id: "bilder", label: "Bilder" },
-  ];
-
+function Datenschutz() {
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card/60 backdrop-blur sticky top-0 z-20">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">Café Koch · Admin</p>
-            <h1 className="font-display text-xl text-espresso leading-none mt-1">Dashboard</h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="hidden sm:inline text-xs text-foreground/60">{email}</span>
-            <button
-              onClick={() => supabase.auth.signOut()}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-border text-xs hover:bg-secondary transition-colors"
-            >
-              <LogOut size={14} /> Abmelden
-            </button>
-          </div>
-        </div>
-        <div className="max-w-5xl mx-auto px-4 pb-3 flex gap-1 overflow-x-auto">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`whitespace-nowrap px-4 py-2 rounded-full text-sm transition-colors ${
-                tab === t.id
-                  ? "bg-primary text-primary-foreground"
-                  : "text-foreground/70 hover:bg-secondary"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </header>
+      <Header />
+      <main className="pt-32 pb-24 max-w-3xl mx-auto px-6">
+        <p className="uppercase tracking-[0.3em] text-xs text-accent mb-4">Rechtliches</p>
+        <h1 className="font-display text-5xl text-espresso mb-12">Datenschutzerklärung</h1>
 
-      <main className="max-w-5xl mx-auto px-4 py-6 pb-20">
-        {tab === "aktuelles" && <NewsEditor />}
-        {tab === "oeffnungszeiten" && <OpeningHoursEditor />}
-        {tab === "texte" && <TextsEditor />}
-        {tab === "bilder" && <ImagesEditor />}
+        <article className="space-y-10 text-foreground/80 leading-relaxed [&_h2]:font-display [&_h2]:text-2xl [&_h2]:text-espresso [&_h2]:mb-4 [&_h2]:mt-10 [&_h3]:font-display [&_h3]:text-xl [&_h3]:text-espresso [&_h3]:mb-3 [&_h3]:mt-6 [&_h4]:font-semibold [&_h4]:text-espresso [&_h4]:mb-2 [&_h4]:mt-4 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-3 [&_a]:text-accent [&_a]:underline">
+
+          <section>
+            <h2>1. Datenschutz auf einen Blick</h2>
+
+            <h3>Allgemeine Hinweise</h3>
+            <p>
+              Die folgenden Hinweise geben einen einfachen Überblick darüber, was mit Ihren personenbezogenen Daten
+              passiert, wenn Sie diese Website besuchen. Personenbezogene Daten sind alle Daten, mit denen Sie
+              persönlich identifiziert werden können. Ausführliche Informationen zum Thema Datenschutz entnehmen Sie
+              unserer unter diesem Text aufgeführten Datenschutzerklärung.
+            </p>
+
+            <h3>Datenerfassung auf dieser Website</h3>
+
+            <h4>Wer ist verantwortlich für die Datenerfassung auf dieser Website?</h4>
+            <p>
+              Die Datenverarbeitung auf dieser Website erfolgt durch den Websitebetreiber. Dessen Kontaktdaten können
+              Sie dem Abschnitt „Hinweis zur Verantwortlichen Stelle" in dieser Datenschutzerklärung entnehmen.
+            </p>
+
+            <h4>Wie erfassen wir Ihre Daten?</h4>
+            <p>
+              Ihre Daten werden zum einen dadurch erhoben, dass Sie uns diese mitteilen. Hierbei kann es sich z. B. um
+              Daten handeln, die Sie in ein Kontaktformular eingeben.
+            </p>
+            <p>
+              Andere Daten werden automatisch oder nach Ihrer Einwilligung beim Besuch der Website durch unsere
+              IT-Systeme erfasst. Das sind vor allem technische Daten (z. B. Internetbrowser, Betriebssystem oder
+              Uhrzeit des Seitenaufrufs). Die Erfassung dieser Daten erfolgt automatisch, sobald Sie diese Website
+              betreten.
+            </p>
+
+            <h4>Wofür nutzen wir Ihre Daten?</h4>
+            <p>
+              Ein Teil der Daten wird erhoben, um eine fehlerfreie Bereitstellung der Website zu gewährleisten. Andere
+              Daten können zur Analyse Ihres Nutzerverhaltens verwendet werden. Sofern über die Website Verträge
+              geschlossen oder angebahnt werden können, werden die übermittelten Daten auch für Vertragsangebote,
+              Bestellungen oder sonstige Auftragsanfragen verarbeitet.
+            </p>
+
+            <h4>Welche Rechte haben Sie bezüglich Ihrer Daten?</h4>
+            <p>
+              Sie haben jederzeit das Recht, unentgeltlich Auskunft über Herkunft, Empfänger und Zweck Ihrer
+              gespeicherten personenbezogenen Daten zu erhalten. Sie haben außerdem ein Recht, die Berichtigung oder
+              Löschung dieser Daten zu verlangen. Wenn Sie eine Einwilligung zur Datenverarbeitung erteilt haben,
+              können Sie diese Einwilligung jederzeit für die Zukunft widerrufen. Außerdem haben Sie das Recht, unter
+              bestimmten Umständen die Einschränkung der Verarbeitung Ihrer personenbezogenen Daten zu verlangen. Des
+              Weiteren steht Ihnen ein Beschwerderecht bei der zuständigen Aufsichtsbehörde zu.
+            </p>
+            <p>
+              Hierzu sowie zu weiteren Fragen zum Thema Datenschutz können Sie sich jederzeit an uns wenden.
+            </p>
+          </section>
+
+          <section>
+            <h2>2. Hosting</h2>
+            <p>Wir hosten die Inhalte unserer Website bei folgendem Anbieter:</p>
+
+            <h3>Externes Hosting</h3>
+            <p>
+              Diese Website wird extern gehostet. Die personenbezogenen Daten, die auf dieser Website erfasst werden,
+              werden auf den Servern des Hosters / der Hoster gespeichert. Hierbei kann es sich v. a. um IP-Adressen,
+              Kontaktanfragen, Meta- und Kommunikationsdaten, Vertragsdaten, Kontaktdaten, Namen, Websitezugriffe und
+              sonstige Daten, die über eine Website generiert werden, handeln.
+            </p>
+            <p>
+              Das externe Hosting erfolgt zum Zwecke der Vertragserfüllung gegenüber unseren potenziellen und
+              bestehenden Kunden (Art. 6 Abs. 1 lit. b DSGVO) und im Interesse einer sicheren, schnellen und effizienten
+              Bereitstellung unseres Online-Angebots durch einen professionellen Anbieter (Art. 6 Abs. 1 lit. f DSGVO).
+              Sofern eine entsprechende Einwilligung abgefragt wurde, erfolgt die Verarbeitung ausschließlich auf
+              Grundlage von Art. 6 Abs. 1 lit. a DSGVO und § 25 Abs. 1 TDDDG, soweit die Einwilligung die Speicherung
+              von Cookies oder den Zugriff auf Informationen im Endgerät des Nutzers (z. B. Device-Fingerprinting) im
+              Sinne des TDDDG umfasst. Die Einwilligung ist jederzeit widerrufbar.
+            </p>
+            <p>
+              Unser(e) Hoster wird bzw. werden Ihre Daten nur insoweit verarbeiten, wie dies zur Erfüllung seiner
+              Leistungspflichten erforderlich ist und unsere Weisungen in Bezug auf diese Daten befolgen.
+            </p>
+            <p>Wir setzen folgende(n) Hoster ein:</p>
+            <p><a href="https://lovable.dev/" target="_blank" rel="noreferrer">https://lovable.dev/</a></p>
+          </section>
+
+          <section>
+            <h2>3. Allgemeine Hinweise und Pflichtinformationen</h2>
+
+            <h3>Datenschutz</h3>
+            <p>
+              Die Betreiber dieser Seiten nehmen den Schutz Ihrer persönlichen Daten sehr ernst. Wir behandeln Ihre
+              personenbezogenen Daten vertraulich und entsprechend den gesetzlichen Datenschutzvorschriften sowie
+              dieser Datenschutzerklärung.
+            </p>
+            <p>
+              Wenn Sie diese Website benutzen, werden verschiedene personenbezogene Daten erhoben. Personenbezogene
+              Daten sind Daten, mit denen Sie persönlich identifiziert werden können. Die vorliegende
+              Datenschutzerklärung erläutert, welche Daten wir erheben und wofür wir sie nutzen. Sie erläutert auch,
+              wie und zu welchem Zweck das geschieht.
+            </p>
+            <p>
+              Wir weisen darauf hin, dass die Datenübertragung im Internet (z. B. bei der Kommunikation per E-Mail)
+              Sicherheitslücken aufweisen kann. Ein lückenloser Schutz der Daten vor dem Zugriff durch Dritte ist nicht
+              möglich.
+            </p>
+
+            <h3>Hinweis zur verantwortlichen Stelle</h3>
+            <p>Die verantwortliche Stelle für die Datenverarbeitung auf dieser Website ist:</p>
+            <p>
+              Inhaber: Gerhard Granvogl<br />
+              Stadtplatz 17<br />
+              86551 Aichach
+            </p>
+            <p>
+              Telefon: 08251 / 2580<br />
+              E-Mail: info@cafe-koch.de
+            </p>
+            <p>
+              Verantwortliche Stelle ist die natürliche oder juristische Person, die allein oder gemeinsam mit anderen
+              über die Zwecke und Mittel der Verarbeitung von personenbezogenen Daten (z. B. Namen, E-Mail-Adressen
+              o. Ä.) entscheidet.
+            </p>
+
+            <h3>Speicherdauer</h3>
+            <p>
+              Soweit innerhalb dieser Datenschutzerklärung keine speziellere Speicherdauer genannt wurde, verbleiben
+              Ihre personenbezogenen Daten bei uns, bis der Zweck für die Datenverarbeitung entfällt. Wenn Sie ein
+              berechtigtes Löschersuchen geltend machen oder eine Einwilligung zur Datenverarbeitung widerrufen, werden
+              Ihre Daten gelöscht, sofern wir keine anderen rechtlich zulässigen Gründe für die Speicherung Ihrer
+              personenbezogenen Daten haben (z. B. steuer- oder handelsrechtliche Aufbewahrungsfristen); im
+              letztgenannten Fall erfolgt die Löschung nach Fortfall dieser Gründe.
+            </p>
+
+            <h3>Allgemeine Hinweise zu den Rechtsgrundlagen der Datenverarbeitung auf dieser Website</h3>
+            <p>
+              Sofern Sie in die Datenverarbeitung eingewilligt haben, verarbeiten wir Ihre personenbezogenen Daten auf
+              Grundlage von Art. 6 Abs. 1 lit. a DSGVO bzw. Art. 9 Abs. 2 lit. a DSGVO, sofern besondere Datenkategorien
+              nach Art. 9 Abs. 1 DSGVO verarbeitet werden. Im Falle einer ausdrücklichen Einwilligung in die Übertragung
+              personenbezogener Daten in Drittstaaten erfolgt die Datenverarbeitung außerdem auf Grundlage von Art. 49
+              Abs. 1 lit. a DSGVO. Sofern Sie in die Speicherung von Cookies oder in den Zugriff auf Informationen in
+              Ihr Endgerät (z. B. via Device-Fingerprinting) eingewilligt haben, erfolgt die Datenverarbeitung
+              zusätzlich auf Grundlage von § 25 Abs. 1 TDDDG. Die Einwilligung ist jederzeit widerrufbar. Sind Ihre
+              Daten zur Vertragserfüllung oder zur Durchführung vorvertraglicher Maßnahmen erforderlich, verarbeiten wir
+              Ihre Daten auf Grundlage des Art. 6 Abs. 1 lit. b DSGVO. Des Weiteren verarbeiten wir Ihre Daten, sofern
+              diese zur Erfüllung einer rechtlichen Verpflichtung erforderlich sind auf Grundlage von Art. 6 Abs. 1
+              lit. c DSGVO. Die Datenverarbeitung kann ferner auf Grundlage unseres berechtigten Interesses nach Art. 6
+              Abs. 1 lit. f DSGVO erfolgen. Über die jeweils im Einzelfall einschlägigen Rechtsgrundlagen wird in den
+              folgenden Absätzen dieser Datenschutzerklärung informiert.
+            </p>
+
+            <h3>Empfänger von personenbezogenen Daten</h3>
+            <p>
+              Im Rahmen unserer Geschäftstätigkeit arbeiten wir mit verschiedenen externen Stellen zusammen. Dabei ist
+              teilweise auch eine Übermittlung von personenbezogenen Daten an diese externen Stellen erforderlich. Wir
+              geben personenbezogene Daten nur dann an externe Stellen weiter, wenn dies im Rahmen einer
+              Vertragserfüllung erforderlich ist, wenn wir gesetzlich hierzu verpflichtet sind (z. B. Weitergabe von
+              Daten an Steuerbehörden), wenn wir ein berechtigtes Interesse nach Art. 6 Abs. 1 lit. f DSGVO an der
+              Weitergabe haben oder wenn eine sonstige Rechtsgrundlage die Datenweitergabe erlaubt. Beim Einsatz von
+              Auftragsverarbeitern geben wir personenbezogene Daten unserer Kunden nur auf Grundlage eines gültigen
+              Vertrags über Auftragsverarbeitung weiter. Im Falle einer gemeinsamen Verarbeitung wird ein Vertrag über
+              gemeinsame Verarbeitung geschlossen.
+            </p>
+
+            <h3>Widerruf Ihrer Einwilligung zur Datenverarbeitung</h3>
+            <p>
+              Viele Datenverarbeitungsvorgänge sind nur mit Ihrer ausdrücklichen Einwilligung möglich. Sie können eine
+              bereits erteilte Einwilligung jederzeit widerrufen. Die Rechtmäßigkeit der bis zum Widerruf erfolgten
+              Datenverarbeitung bleibt vom Widerruf unberührt.
+            </p>
+
+            <h3>Widerspruchsrecht gegen die Datenerhebung in besonderen Fällen sowie gegen Direktwerbung (Art. 21 DSGVO)</h3>
+            <p>
+              WENN DIE DATENVERARBEITUNG AUF GRUNDLAGE VON ART. 6 ABS. 1 LIT. E ODER F DSGVO ERFOLGT, HABEN SIE
+              JEDERZEIT DAS RECHT, AUS GRÜNDEN, DIE SICH AUS IHRER BESONDEREN SITUATION ERGEBEN, GEGEN DIE VERARBEITUNG
+              IHRER PERSONENBEZOGENEN DATEN WIDERSPRUCH EINZULEGEN; DIES GILT AUCH FÜR EIN AUF DIESE BESTIMMUNGEN
+              GESTÜTZTES PROFILING. DIE JEWEILIGE RECHTSGRUNDLAGE, AUF DENEN EINE VERARBEITUNG BERUHT, ENTNEHMEN SIE
+              DIESER DATENSCHUTZERKLÄRUNG. WENN SIE WIDERSPRUCH EINLEGEN, WERDEN WIR IHRE BETROFFENEN PERSONENBEZOGENEN
+              DATEN NICHT MEHR VERARBEITEN, ES SEI DENN, WIR KÖNNEN ZWINGENDE SCHUTZWÜRDIGE GRÜNDE FÜR DIE VERARBEITUNG
+              NACHWEISEN, DIE IHRE INTERESSEN, RECHTE UND FREIHEITEN ÜBERWIEGEN ODER DIE VERARBEITUNG DIENT DER
+              GELTENDMACHUNG, AUSÜBUNG ODER VERTEIDIGUNG VON RECHTSANSPRÜCHEN (WIDERSPRUCH NACH ART. 21 ABS. 1 DSGVO).
+            </p>
+            <p>
+              WERDEN IHRE PERSONENBEZOGENEN DATEN VERARBEITET, UM DIREKTWERBUNG ZU BETREIBEN, SO HABEN SIE DAS RECHT,
+              JEDERZEIT WIDERSPRUCH GEGEN DIE VERARBEITUNG SIE BETREFFENDER PERSONENBEZOGENER DATEN ZUM ZWECKE DERARTIGER
+              WERBUNG EINZULEGEN; DIES GILT AUCH FÜR DAS PROFILING, SOWEIT ES MIT SOLCHER DIREKTWERBUNG IN VERBINDUNG
+              STEHT. WENN SIE WIDERSPRECHEN, WERDEN IHRE PERSONENBEZOGENEN DATEN ANSCHLIESSEND NICHT MEHR ZUM ZWECKE DER
+              DIREKTWERBUNG VERWENDET (WIDERSPRUCH NACH ART. 21 ABS. 2 DSGVO).
+            </p>
+
+            <h3>Beschwerderecht bei der zuständigen Aufsichtsbehörde</h3>
+            <p>
+              Im Falle von Verstößen gegen die DSGVO steht den Betroffenen ein Beschwerderecht bei einer
+              Aufsichtsbehörde, insbesondere in dem Mitgliedstaat ihres gewöhnlichen Aufenthalts, ihres Arbeitsplatzes
+              oder des Orts des mutmaßlichen Verstoßes zu. Das Beschwerderecht besteht unbeschadet anderweitiger
+              verwaltungsrechtlicher oder gerichtlicher Rechtsbehelfe.
+            </p>
+
+            <h3>Recht auf Datenübertragbarkeit</h3>
+            <p>
+              Sie haben das Recht, Daten, die wir auf Grundlage Ihrer Einwilligung oder in Erfüllung eines Vertrags
+              automatisiert verarbeiten, an sich oder an einen Dritten in einem gängigen, maschinenlesbaren Format
+              aushändigen zu lassen. Sofern Sie die direkte Übertragung der Daten an einen anderen Verantwortlichen
+              verlangen, erfolgt dies nur, soweit es technisch machbar ist.
+            </p>
+
+            <h3>Auskunft, Berichtigung und Löschung</h3>
+            <p>
+              Sie haben im Rahmen der geltenden gesetzlichen Bestimmungen jederzeit das Recht auf unentgeltliche
+              Auskunft über Ihre gespeicherten personenbezogenen Daten, deren Herkunft und Empfänger und den Zweck der
+              Datenverarbeitung und ggf. ein Recht auf Berichtigung oder Löschung dieser Daten. Hierzu sowie zu weiteren
+              Fragen zum Thema personenbezogene Daten können Sie sich jederzeit an uns wenden.
+            </p>
+
+            <h3>Recht auf Einschränkung der Verarbeitung</h3>
+            <p>
+              Sie haben das Recht, die Einschränkung der Verarbeitung Ihrer personenbezogenen Daten zu verlangen. Hierzu
+              können Sie sich jederzeit an uns wenden. Das Recht auf Einschränkung der Verarbeitung besteht in
+              folgenden Fällen:
+            </p>
+            <ul>
+              <li>
+                Wenn Sie die Richtigkeit Ihrer bei uns gespeicherten personenbezogenen Daten bestreiten, benötigen wir
+                in der Regel Zeit, um dies zu überprüfen. Für die Dauer der Prüfung haben Sie das Recht, die
+                Einschränkung der Verarbeitung Ihrer personenbezogenen Daten zu verlangen.
+              </li>
+              <li>
+                Wenn die Verarbeitung Ihrer personenbezogenen Daten unrechtmäßig geschah/geschieht, können Sie statt der
+                Löschung die Einschränkung der Datenverarbeitung verlangen.
+              </li>
+              <li>
+                Wenn wir Ihre personenbezogenen Daten nicht mehr benötigen, Sie sie jedoch zur Ausübung, Verteidigung
+                oder Geltendmachung von Rechtsansprüchen benötigen, haben Sie das Recht, statt der Löschung die
+                Einschränkung der Verarbeitung Ihrer personenbezogenen Daten zu verlangen.
+              </li>
+              <li>
+                Wenn Sie einen Widerspruch nach Art. 21 Abs. 1 DSGVO eingelegt haben, muss eine Abwägung zwischen Ihren
+                und unseren Interessen vorgenommen werden. Solange noch nicht feststeht, wessen Interessen überwiegen,
+                haben Sie das Recht, die Einschränkung der Verarbeitung Ihrer personenbezogenen Daten zu verlangen.
+              </li>
+            </ul>
+            <p>
+              Wenn Sie die Verarbeitung Ihrer personenbezogenen Daten eingeschränkt haben, dürfen diese Daten – von
+              ihrer Speicherung abgesehen – nur mit Ihrer Einwilligung oder zur Geltendmachung, Ausübung oder
+              Verteidigung von Rechtsansprüchen oder zum Schutz der Rechte einer anderen natürlichen oder juristischen
+              Person oder aus Gründen eines wichtigen öffentlichen Interesses der Europäischen Union oder eines
+              Mitgliedstaats verarbeitet werden.
+            </p>
+
+            <h3>SSL- bzw. TLS-Verschlüsselung</h3>
+            <p>
+              Diese Seite nutzt aus Sicherheitsgründen und zum Schutz der Übertragung vertraulicher Inhalte, wie zum
+              Beispiel Bestellungen oder Anfragen, die Sie an uns als Seitenbetreiber senden, eine SSL- bzw.
+              TLS-Verschlüsselung. Eine verschlüsselte Verbindung erkennen Sie daran, dass die Adresszeile des Browsers
+              von „http://" auf „https://" wechselt und an dem Schloss-Symbol in Ihrer Browserzeile.
+            </p>
+            <p>
+              Wenn die SSL- bzw. TLS-Verschlüsselung aktiviert ist, können die Daten, die Sie an uns übermitteln, nicht
+              von Dritten mitgelesen werden.
+            </p>
+
+            <h3>Widerspruch gegen Werbe-E-Mails</h3>
+            <p>
+              Der Nutzung von im Rahmen der Impressumspflicht veröffentlichten Kontaktdaten zur Übersendung von nicht
+              ausdrücklich angeforderter Werbung und Informationsmaterialien wird hiermit widersprochen. Die Betreiber
+              der Seiten behalten sich ausdrücklich rechtliche Schritte im Falle der unverlangten Zusendung von
+              Werbeinformationen, etwa durch Spam-E-Mails, vor.
+            </p>
+          </section>
+
+          <section>
+            <h2>4. Datenerfassung auf dieser Website</h2>
+
+            <h3>Server-Log-Dateien</h3>
+            <p>
+              Der Provider der Seiten erhebt und speichert automatisch Informationen in so genannten Server-Log-Dateien,
+              die Ihr Browser automatisch an uns übermittelt. Dies sind:
+            </p>
+            <ul>
+              <li>Browsertyp und Browserversion</li>
+              <li>verwendetes Betriebssystem</li>
+              <li>Referrer URL</li>
+              <li>Hostname des zugreifenden Rechners</li>
+              <li>Uhrzeit der Serveranfrage</li>
+              <li>IP-Adresse</li>
+            </ul>
+            <p>Eine Zusammenführung dieser Daten mit anderen Datenquellen wird nicht vorgenommen.</p>
+            <p>
+              Die Erfassung dieser Daten erfolgt auf Grundlage von Art. 6 Abs. 1 lit. f DSGVO. Der Websitebetreiber hat
+              ein berechtigtes Interesse an der technisch fehlerfreien Darstellung und der Optimierung seiner Website –
+              hierzu müssen die Server-Log-Files erfasst werden.
+            </p>
+
+            <h3>Anfrage per E-Mail, Telefon oder Telefax</h3>
+            <p>
+              Wenn Sie uns per E-Mail, Telefon oder Telefax kontaktieren, wird Ihre Anfrage inklusive aller daraus
+              hervorgehenden personenbezogenen Daten (Name, Anfrage) zum Zwecke der Bearbeitung Ihres Anliegens bei uns
+              gespeichert und verarbeitet. Diese Daten geben wir nicht ohne Ihre Einwilligung weiter.
+            </p>
+            <p>
+              Die Verarbeitung dieser Daten erfolgt auf Grundlage von Art. 6 Abs. 1 lit. b DSGVO, sofern Ihre Anfrage
+              mit der Erfüllung eines Vertrags zusammenhängt oder zur Durchführung vorvertraglicher Maßnahmen
+              erforderlich ist. In allen übrigen Fällen beruht die Verarbeitung auf unserem berechtigten Interesse an
+              der effektiven Bearbeitung der an uns gerichteten Anfragen (Art. 6 Abs. 1 lit. f DSGVO) oder auf Ihrer
+              Einwilligung (Art. 6 Abs. 1 lit. a DSGVO) sofern diese abgefragt wurde; die Einwilligung ist jederzeit
+              widerrufbar.
+            </p>
+            <p>
+              Die von Ihnen an uns per Kontaktanfragen übersandten Daten verbleiben bei uns, bis Sie uns zur Löschung
+              auffordern, Ihre Einwilligung zur Speicherung widerrufen oder der Zweck für die Datenspeicherung entfällt
+              (z. B. nach abgeschlossener Bearbeitung Ihres Anliegens). Zwingende gesetzliche Bestimmungen – insbesondere
+              gesetzliche Aufbewahrungsfristen – bleiben unberührt.
+            </p>
+          </section>
+
+          <section>
+            <h2>5. Plugins und Tools</h2>
+
+            <h3>Google Fonts</h3>
+            <p>
+              Diese Seite nutzt zur einheitlichen Darstellung von Schriftarten so genannte Google Fonts, die von Google
+              bereitgestellt werden. Beim Aufruf einer Seite lädt Ihr Browser die benötigten Fonts in ihren
+              Browsercache, um Texte und Schriftarten korrekt anzuzeigen.
+            </p>
+            <p>
+              Zu diesem Zweck muss der von Ihnen verwendete Browser Verbindung zu den Servern von Google aufnehmen.
+              Hierdurch erlangt Google Kenntnis darüber, dass über Ihre IP-Adresse diese Website aufgerufen wurde. Die
+              Nutzung von Google Fonts erfolgt auf Grundlage von Art. 6 Abs. 1 lit. f DSGVO. Der Websitebetreiber hat
+              ein berechtigtes Interesse an der einheitlichen Darstellung des Schriftbildes auf seiner Website. Sofern
+              eine entsprechende Einwilligung abgefragt wurde, erfolgt die Verarbeitung ausschließlich auf Grundlage von
+              Art. 6 Abs. 1 lit. a DSGVO und § 25 Abs. 1 TDDDG, soweit die Einwilligung die Speicherung von Cookies oder
+              den Zugriff auf Informationen im Endgerät des Nutzers (z. B. Device-Fingerprinting) im Sinne des TDDDG
+              umfasst. Die Einwilligung ist jederzeit widerrufbar.
+            </p>
+            <p>Wenn Ihr Browser Google Fonts nicht unterstützt, wird eine Standardschrift von Ihrem Computer genutzt.</p>
+            <p>
+              Weitere Informationen zu Google Fonts finden Sie unter{" "}
+              <a href="https://developers.google.com/fonts/faq" target="_blank" rel="noreferrer">https://developers.google.com/fonts/faq</a>{" "}
+              und in der Datenschutzerklärung von Google:{" "}
+              <a href="https://policies.google.com/privacy?hl=de" target="_blank" rel="noreferrer">https://policies.google.com/privacy?hl=de</a>.
+            </p>
+            <p>
+              Das Unternehmen verfügt über eine Zertifizierung nach dem „EU-US Data Privacy Framework" (DPF). Der DPF
+              ist ein Übereinkommen zwischen der Europäischen Union und den USA, der die Einhaltung europäischer
+              Datenschutzstandards bei Datenverarbeitungen in den USA gewährleisten soll. Jedes nach dem DPF
+              zertifizierte Unternehmen verpflichtet sich, diese Datenschutzstandards einzuhalten. Weitere Informationen
+              hierzu erhalten Sie vom Anbieter unter folgendem Link:{" "}
+              <a href="https://www.dataprivacyframework.gov/participant/5780" target="_blank" rel="noreferrer">https://www.dataprivacyframework.gov/participant/5780</a>.
+            </p>
+
+            <h3>Google Maps</h3>
+            <p>
+              Diese Seite nutzt den Kartendienst Google Maps. Anbieter ist die Google Ireland Limited („Google"), Gordon
+              House, Barrow Street, Dublin 4, Irland. Mit Hilfe dieses Dienstes können wir Kartenmaterial auf unserer
+              Website einbinden.
+            </p>
+            <p>
+              Zur Nutzung der Funktionen von Google Maps ist es notwendig, Ihre IP-Adresse zu speichern. Diese
+              Informationen werden in der Regel an einen Server von Google in den USA übertragen und dort gespeichert.
+              Der Anbieter dieser Seite hat keinen Einfluss auf diese Datenübertragung. Wenn Google Maps aktiviert ist,
+              kann Google zum Zwecke der einheitlichen Darstellung der Schriftarten Google Fonts verwenden. Beim Aufruf
+              von Google Maps lädt Ihr Browser die benötigten Web Fonts in ihren Browsercache, um Texte und Schriftarten
+              korrekt anzuzeigen.
+            </p>
+            <p>
+              Die Nutzung von Google Maps erfolgt im Interesse einer ansprechenden Darstellung unserer Online-Angebote
+              und an einer leichten Auffindbarkeit der von uns auf der Website angegebenen Orte. Dies stellt ein
+              berechtigtes Interesse im Sinne von Art. 6 Abs. 1 lit. f DSGVO dar. Sofern eine entsprechende Einwilligung
+              abgefragt wurde, erfolgt die Verarbeitung ausschließlich auf Grundlage von Art. 6 Abs. 1 lit. a DSGVO und
+              § 25 Abs. 1 TDDDG, soweit die Einwilligung die Speicherung von Cookies oder den Zugriff auf Informationen
+              im Endgerät des Nutzers (z. B. Device-Fingerprinting) im Sinne des TDDDG umfasst. Die Einwilligung ist
+              jederzeit widerrufbar.
+            </p>
+            <p>
+              Die Datenübertragung in die USA wird auf die Standardvertragsklauseln der EU-Kommission gestützt. Details
+              finden Sie hier:{" "}
+              <a href="https://privacy.google.com/businesses/gdprcontrollerterms/" target="_blank" rel="noreferrer">https://privacy.google.com/businesses/gdprcontrollerterms/</a>{" "}
+              und{" "}
+              <a href="https://privacy.google.com/businesses/gdprcontrollerterms/sccs/" target="_blank" rel="noreferrer">https://privacy.google.com/businesses/gdprcontrollerterms/sccs/</a>.
+            </p>
+            <p>
+              Mehr Informationen zum Umgang mit Nutzerdaten finden Sie in der Datenschutzerklärung von Google:{" "}
+              <a href="https://policies.google.com/privacy?hl=de" target="_blank" rel="noreferrer">https://policies.google.com/privacy?hl=de</a>.
+            </p>
+            <p>
+              Das Unternehmen verfügt über eine Zertifizierung nach dem „EU-US Data Privacy Framework" (DPF). Weitere
+              Informationen erhalten Sie unter:{" "}
+              <a href="https://www.dataprivacyframework.gov/participant/5780" target="_blank" rel="noreferrer">https://www.dataprivacyframework.gov/participant/5780</a>.
+            </p>
+          </section>
+
+          <p className="text-sm text-muted-foreground pt-6 border-t border-border">
+            Quelle: <a href="https://www.e-recht24.de" target="_blank" rel="noreferrer">https://www.e-recht24.de</a>
+          </p>
+        </article>
       </main>
+      <Footer />
     </div>
-  );
-}
-
-// -- News editor ------------------------------------------------------------
-function NewsEditor() {
-  const qc = useQueryClient();
-  const { data, isLoading } = useNews(true);
-  const [draft, setDraft] = useState<Partial<NewsItem>>({ title: "", body: "", published: true });
-  const [busy, setBusy] = useState(false);
-
-  async function create() {
-    if (!draft.title?.trim()) return;
-    setBusy(true);
-    const { error } = await supabase.from("news").insert({
-      title: draft.title, body: draft.body ?? "", published: draft.published ?? true,
-    });
-    setBusy(false);
-    if (!error) {
-      setDraft({ title: "", body: "", published: true });
-      qc.invalidateQueries({ queryKey: ["news"] });
-    } else alert(error.message);
-  }
-  async function update(item: NewsItem, patch: Partial<NewsItem>) {
-    const { error } = await supabase.from("news").update(patch).eq("id", item.id);
-    if (error) alert(error.message);
-    qc.invalidateQueries({ queryKey: ["news"] });
-  }
-  async function remove(id: string) {
-    if (!confirm("Diesen Eintrag wirklich löschen?")) return;
-    const { error } = await supabase.from("news").delete().eq("id", id);
-    if (error) alert(error.message);
-    qc.invalidateQueries({ queryKey: ["news"] });
-  }
-
-  return (
-    <div className="space-y-6">
-      <Card title="Neuen Hinweis hinzufügen" description="Z. B. Sonderöffnungszeiten zu Ostern, Weihnachten oder Betriebsurlaub.">
-        <div className="space-y-3">
-          <Field label="Titel">
-            <input
-              value={draft.title ?? ""} onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-              placeholder="z. B. Geänderte Öffnungszeiten zu Ostern"
-              className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm"
-            />
-          </Field>
-          <Field label="Text">
-            <textarea
-              rows={3} value={draft.body ?? ""} onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-              placeholder="Details, z. B. „Am 31.03. von 10–14 Uhr geöffnet."
-              className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm"
-            />
-          </Field>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={draft.published ?? true}
-              onChange={(e) => setDraft({ ...draft, published: e.target.checked })} />
-            Sofort auf der Webseite veröffentlichen
-          </label>
-          <button
-            onClick={create} disabled={busy || !draft.title?.trim()}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary text-primary-foreground text-sm disabled:opacity-60"
-          >
-            <Plus size={16} /> Hinzufügen
-          </button>
-        </div>
-      </Card>
-
-      <Card title="Bestehende Einträge">
-        {isLoading && <p className="text-sm text-foreground/60">Lade…</p>}
-        {data && data.length === 0 && <p className="text-sm text-foreground/60">Noch keine Einträge.</p>}
-        <ul className="space-y-3">
-          {data?.map((n) => (
-            <li key={n.id} className="border border-border rounded-xl p-4">
-              <input
-                value={n.title}
-                onBlur={(e) => e.target.value !== n.title && update(n, { title: e.target.value })}
-                onChange={(e) => (n.title = e.target.value)}
-                className="w-full bg-transparent font-medium text-espresso outline-none"
-              />
-              <textarea
-                rows={2} defaultValue={n.body}
-                onBlur={(e) => e.target.value !== n.body && update(n, { body: e.target.value })}
-                className="w-full bg-transparent text-sm text-foreground/80 mt-2 outline-none resize-none"
-              />
-              <div className="flex items-center justify-between gap-3 mt-3">
-                <label className="flex items-center gap-2 text-xs text-foreground/70">
-                  <input type="checkbox" defaultChecked={n.published}
-                    onChange={(e) => update(n, { published: e.target.checked })} />
-                  veröffentlicht
-                </label>
-                <button onClick={() => remove(n.id)}
-                  className="inline-flex items-center gap-1 text-xs text-destructive hover:underline">
-                  <Trash2 size={13} /> Löschen
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </Card>
-    </div>
-  );
-}
-
-// -- Opening hours editor ---------------------------------------------------
-function OpeningHoursEditor() {
-  const qc = useQueryClient();
-  const { data, isLoading } = useOpeningHours();
-
-  async function update(row: OpeningHour, patch: Partial<OpeningHour>) {
-    const { error } = await supabase.from("opening_hours").update(patch).eq("id", row.id);
-    if (error) alert(error.message);
-    qc.invalidateQueries({ queryKey: ["opening_hours"] });
-  }
-
-  return (
-    <Card title="Reguläre Öffnungszeiten" description="Diese Tabelle wird direkt auf der Webseite angezeigt.">
-      {isLoading && <p className="text-sm text-foreground/60">Lade…</p>}
-      <ul className="space-y-2">
-        {data?.map((r) => (
-          <li key={r.id} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-center border border-border rounded-xl p-3">
-            <input defaultValue={r.day_label}
-              onBlur={(e) => e.target.value !== r.day_label && update(r, { day_label: e.target.value })}
-              className="bg-transparent px-2 py-1.5 text-sm rounded border border-transparent focus:border-border outline-none" />
-            <input defaultValue={r.hours_label}
-              onBlur={(e) => e.target.value !== r.hours_label && update(r, { hours_label: e.target.value })}
-              className="bg-transparent px-2 py-1.5 text-sm rounded border border-transparent focus:border-border outline-none" />
-            <label className="text-xs text-foreground/60 flex items-center gap-1.5 sm:justify-end">
-              <input type="checkbox" defaultChecked={r.is_muted}
-                onChange={(e) => update(r, { is_muted: e.target.checked })} />
-              Ruhetag-Stil
-            </label>
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
-// -- Texts editor -----------------------------------------------------------
-function TextsEditor() {
-  const qc = useQueryClient();
-  const { data, isLoading } = useSiteSettings();
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [savingKey, setSavingKey] = useState<string | null>(null);
-
-  async function save(key: string) {
-    setSavingKey(key);
-    const value = drafts[key] ?? "";
-    const { error } = await supabase
-      .from("site_settings")
-      .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
-    setSavingKey(null);
-    if (error) alert(error.message);
-    else {
-      setDrafts((d) => { const c = { ...d }; delete c[key]; return c; });
-      qc.invalidateQueries({ queryKey: ["site_settings"] });
-    }
-  }
-
-  return (
-    <Card title="Texte bearbeiten" description="Änderungen erscheinen sofort live auf der Webseite.">
-      {isLoading && <p className="text-sm text-foreground/60">Lade…</p>}
-      <div className="space-y-4">
-        {EDITABLE_KEYS.map(({ key, label, multiline }) => {
-          const current = data?.[key]?.value ?? "";
-          const value = drafts[key] ?? current;
-          const dirty = drafts[key] !== undefined && drafts[key] !== current;
-          return (
-            <div key={key}>
-              <Field label={label}>
-                {multiline ? (
-                  <textarea
-                    rows={3} value={value}
-                    onChange={(e) => setDrafts((d) => ({ ...d, [key]: e.target.value }))}
-                    className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm"
-                  />
-                ) : (
-                  <input
-                    value={value}
-                    onChange={(e) => setDrafts((d) => ({ ...d, [key]: e.target.value }))}
-                    className="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm"
-                  />
-                )}
-              </Field>
-              {dirty && (
-                <button onClick={() => save(key)} disabled={savingKey === key}
-                  className="mt-2 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-primary text-primary-foreground text-xs">
-                  <Save size={12} /> {savingKey === key ? "Speichere…" : "Speichern"}
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
-// -- Images editor ----------------------------------------------------------
-const IMAGE_SLOTS = [
-  { key: "hero_image", label: "Hero-Bild (Startseite oben)" },
-  { key: "about_image", label: "Bild im Bereich \u201eÜber uns\u201c" },
-];
-
-function ImagesEditor() {
-  const qc = useQueryClient();
-  const { data } = useSiteSettings();
-  const [busy, setBusy] = useState<string | null>(null);
-
-  async function upload(key: string, file: File) {
-    setBusy(key);
-    try {
-      const ext = file.name.split(".").pop() ?? "jpg";
-      const path = `${key}-${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("site-images").upload(path, file, { upsert: true });
-      if (upErr) throw upErr;
-      const { data: pub } = supabase.storage.from("site-images").getPublicUrl(path);
-      const { error: sErr } = await supabase
-        .from("site_settings")
-        .upsert({ key, image_url: pub.publicUrl, updated_at: new Date().toISOString() }, { onConflict: "key" });
-      if (sErr) throw sErr;
-      qc.invalidateQueries({ queryKey: ["site_settings"] });
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Fehler beim Hochladen");
-    } finally { setBusy(null); }
-  }
-
-  async function clearImage(key: string) {
-    if (!confirm("Bild entfernen und Standardbild verwenden?")) return;
-    const { error } = await supabase.from("site_settings")
-      .upsert({ key, image_url: null, updated_at: new Date().toISOString() }, { onConflict: "key" });
-    if (error) alert(error.message);
-    qc.invalidateQueries({ queryKey: ["site_settings"] });
-  }
-
-  return (
-    <Card title="Bilder austauschen" description="Lade ein neues Bild hoch – es ersetzt das Standardbild auf der Webseite.">
-      <div className="space-y-5">
-        {IMAGE_SLOTS.map((slot) => {
-          const url = data?.[slot.key]?.image_url ?? null;
-          return (
-            <div key={slot.key} className="border border-border rounded-xl p-4">
-              <p className="text-sm font-medium text-espresso">{slot.label}</p>
-              <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="w-full sm:w-40 h-28 rounded-lg overflow-hidden bg-secondary flex items-center justify-center">
-                  {url ? (
-                    <img src={url} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <ImageIcon className="text-muted-foreground" size={28} />
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <label className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary text-primary-foreground text-sm cursor-pointer">
-                    <Upload size={14} />
-                    {busy === slot.key ? "Lade hoch…" : url ? "Ersetzen" : "Hochladen"}
-                    <input type="file" accept="image/*" className="hidden"
-                      onChange={(e) => e.target.files?.[0] && upload(slot.key, e.target.files[0])} />
-                  </label>
-                  {url && (
-                    <button onClick={() => clearImage(slot.key)}
-                      className="inline-flex items-center gap-1 px-4 py-2 rounded-full border border-border text-sm text-foreground/70">
-                      <Trash2 size={14} /> Entfernen
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
-function Card({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
-  return (
-    <section className="bg-card border border-border rounded-2xl p-5 sm:p-6">
-      <h2 className="font-display text-xl text-espresso">{title}</h2>
-      {description && <p className="text-sm text-foreground/65 mt-1">{description}</p>}
-      <div className="mt-5">{children}</div>
-    </section>
   );
 }
